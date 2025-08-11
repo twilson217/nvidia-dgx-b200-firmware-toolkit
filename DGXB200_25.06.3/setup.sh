@@ -44,9 +44,17 @@ run_with_confirmation() {
 # Function to validate IP range format
 validate_ip_range() {
     local input="$1"
-    if [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || \
-       [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(,[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})*$ ]] || \
-       [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-[0-9]+$ ]]; then
+    # Full IP range: 192.168.1.10-192.168.1.20
+    if [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        return 0
+    # Short IP range: 192.168.1.10-20
+    elif [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-[0-9]+$ ]]; then
+        return 0
+    # Comma-separated list: 192.168.1.10,192.168.1.11,192.168.1.15
+    elif [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(,[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})*$ ]]; then
+        return 0
+    # Single IP: 192.168.1.10
+    elif [[ $input =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
         return 0
     else
         return 1
@@ -56,24 +64,39 @@ validate_ip_range() {
 # Function to expand IP range
 expand_ip_range() {
     local input="$1"
-    local ip_list=""
     
     if [[ $input == *","* ]]; then
-        # Comma-separated list
+        # Comma-separated list: 192.168.1.10,192.168.1.11,192.168.1.15
         echo "$input" | tr ',' '\n'
     elif [[ $input == *"-"* ]]; then
         if [[ $input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})-([0-9]+)$ ]]; then
-            # IP range like 192.168.1.10-20
+            # Short IP range like 192.168.1.10-20
             local prefix="${BASH_REMATCH[1]}"
             local start="${BASH_REMATCH[2]}"
             local end="${BASH_REMATCH[3]}"
             for ((i=start; i<=end; i++)); do
                 echo "$prefix.$i"
             done
-        else
+        elif [[ $input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})-([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})$ ]]; then
             # Full IP range like 192.168.1.10-192.168.1.20
-            # This is more complex, for now just return the input
-            echo "$input"
+            local start_prefix="${BASH_REMATCH[1]}"
+            local start_last="${BASH_REMATCH[2]}"
+            local end_prefix="${BASH_REMATCH[3]}"
+            local end_last="${BASH_REMATCH[4]}"
+            
+            # Validate that prefixes match
+            if [[ "$start_prefix" != "$end_prefix" ]]; then
+                print_error "IP range prefixes must match: $start_prefix vs $end_prefix"
+                return 1
+            fi
+            
+            # Generate the range
+            for ((i=start_last; i<=end_last; i++)); do
+                echo "$start_prefix.$i"
+            done
+        else
+            print_error "Unrecognized IP range format: $input"
+            return 1
         fi
     else
         # Single IP
@@ -183,27 +206,57 @@ echo "  List: 192.168.1.10,192.168.1.11,192.168.1.15"
 echo "  Full range: 192.168.1.10-192.168.1.20"
 echo
 
-read -p "Enter IP address range/list: " ip_input
-if ! validate_ip_range "$ip_input"; then
-    print_warning "Invalid format, but continuing..."
-fi
+# Get IP input with validation and re-prompting
+while true; do
+    read -p "Enter IP address range/list: " ip_input
+    
+    if validate_ip_range "$ip_input"; then
+        print_success "Valid IP range format detected"
+        break
+    else
+        print_error "Invalid IP range format!"
+        echo "Supported formats:"
+        echo "  - Full range: 192.168.1.63-192.168.1.94"
+        echo "  - Short range: 192.168.1.10-20"
+        echo "  - List: 192.168.1.10,192.168.1.11,192.168.1.15"
+        echo "  - Single IP: 192.168.1.10"
+        echo
+        print_warning "Please enter a valid format. NO DEFAULTS WILL BE USED."
+        echo
+    fi
+done
 
-# Extract IP prefix and range for scripts
+# Parse the IP range for script variables
 if [[ $ip_input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})-([0-9]+)$ ]]; then
+    # Short range like 192.168.1.10-20
     IP_PREFIX="${BASH_REMATCH[1]}"
     START_IP="${BASH_REMATCH[2]}"
     END_IP="${BASH_REMATCH[3]}"
-elif [[ $ip_input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\. ]]; then
+elif [[ $ip_input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})-([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+    # Full range like 192.168.1.63-192.168.1.94
     IP_PREFIX="${BASH_REMATCH[1]}"
-    START_IP="1"
-    END_IP="254"
-    print_info "Using default range 1-254 for IP prefix $IP_PREFIX"
+    START_IP="${BASH_REMATCH[2]}"
+    END_IP="${BASH_REMATCH[4]}"
+elif [[ $ip_input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+    # Single IP like 192.168.1.10
+    IP_PREFIX="${BASH_REMATCH[1]}"
+    START_IP="${BASH_REMATCH[2]}"
+    END_IP="${BASH_REMATCH[2]}"
 else
-    print_info "Complex IP range detected, you may need to manually adjust scripts"
-    IP_PREFIX="192.168.1"
-    START_IP="1"
-    END_IP="254"
+    # Comma-separated list - we'll use the first IP for prefix and handle specially
+    first_ip=$(echo "$ip_input" | cut -d',' -f1)
+    if [[ $first_ip =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+        IP_PREFIX="${BASH_REMATCH[1]}"
+        START_IP="${BASH_REMATCH[2]}"
+        END_IP="${BASH_REMATCH[2]}"
+        print_info "Using comma-separated list - scripts will use first IP for range variables"
+    fi
 fi
+
+print_info "Parsed IP configuration:"
+print_info "  IP Prefix: $IP_PREFIX"
+print_info "  Start IP: $START_IP" 
+print_info "  End IP: $END_IP"
 
 # Get exclusions
 read -p "Do you want to exclude any IP addresses? (y/n): " -n 1 -r
@@ -350,7 +403,7 @@ $(generate_yaml_systems "$GPU_INTERMEDIATE_PACKAGE_PATH" '{"Targets" :["/redfish
 EOF
 
 # Generate GPU Final YAML
-cat > "$SCRIPT_DIR/gpu_tray_final_generated.yaml" << EOF
+cat > "$SCRIPT_DIR/gpu_tray_final.yaml" << EOF
 # Disable Sanitize Log optionally
 # Disabling SANITIZE_LOG prints system IPs and user credentials to the logs and screen
 SANITIZE_LOG: False
