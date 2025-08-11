@@ -101,9 +101,8 @@ The setup script (`setup.sh`) provides:
 
 **Generated Files**:
 - `.env` - Contains all your configuration values
-- `*_generated.yaml` - Ready-to-use YAML configurations with your actual values
+- `bmc.yaml`, `motherboard.yaml`, `gpu_tray_*.yaml` - Ready-to-use YAML configurations
 - Updated bash scripts that source your configuration automatically
-- Original template YAML files are preserved for reference
 
 ## Manual Configuration
 
