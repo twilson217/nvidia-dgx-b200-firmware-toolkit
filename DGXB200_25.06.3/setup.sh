@@ -350,7 +350,7 @@ $(generate_yaml_systems "$GPU_INTERMEDIATE_PACKAGE_PATH" '{"Targets" :["/redfish
 EOF
 
 # Generate GPU Final YAML
-cat > "$SCRIPT_DIR/gpu_tray_final.yaml" << EOF
+cat > "$SCRIPT_DIR/gpu_tray_final_generated.yaml" << EOF
 # Disable Sanitize Log optionally
 # Disabling SANITIZE_LOG prints system IPs and user credentials to the logs and screen
 SANITIZE_LOG: False
