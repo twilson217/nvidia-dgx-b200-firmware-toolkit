@@ -9,6 +9,68 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 TEMP_DIR="$SCRIPT_DIR/temp_setup"
 
+# Function to load existing configuration
+load_existing_config() {
+    if [[ -f "$ENV_FILE" ]]; then
+        print_info "Found existing configuration file: $ENV_FILE"
+        source "$ENV_FILE"
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to prompt with default value
+prompt_with_default() {
+    local prompt="$1"
+    local current_value="$2"
+    local var_name="$3"
+    local is_password="${4:-false}"
+    
+    if [[ -n "$current_value" ]]; then
+        if [[ "$is_password" == "true" ]]; then
+            read -p "$prompt [current: ****] (press Enter to keep current): " input
+        else
+            read -p "$prompt [current: $current_value] (press Enter to keep current): " input
+        fi
+        
+        if [[ -z "$input" ]]; then
+            eval "$var_name=\"$current_value\""
+        else
+            eval "$var_name=\"$input\""
+        fi
+    else
+        if [[ "$is_password" == "true" ]]; then
+            read -s -p "$prompt: " input
+            echo
+        else
+            read -p "$prompt: " input
+        fi
+        eval "$var_name=\"$input\""
+    fi
+}
+
+# Function to prompt with default value for passwords
+prompt_password_with_default() {
+    local prompt="$1"
+    local current_value="$2"
+    local var_name="$3"
+    
+    if [[ -n "$current_value" ]]; then
+        read -s -p "$prompt [current password set] (press Enter to keep current, or type new): " input
+        echo
+        if [[ -z "$input" ]]; then
+            eval "$var_name=\"$current_value\""
+        else
+            eval "$var_name=\"$input\""
+        fi
+    else
+        read -s -p "$prompt: " input
+        echo
+        eval "$var_name=\"$input\""
+    fi
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -108,6 +170,15 @@ print_info "=== NVIDIA DGX B200 Firmware Update Toolkit Setup ==="
 print_info "This script will configure the toolkit for your environment."
 echo
 
+# Load existing configuration if available
+if load_existing_config; then
+    print_success "Loaded existing configuration. You can press Enter to keep current values."
+    echo
+else
+    print_info "No existing configuration found. Setting up from scratch."
+    echo
+fi
+
 # Check if nvfwupd is installed
 print_info "Checking nvfwupd installation..."
 if command -v nvfwupd &> /dev/null; then
@@ -153,9 +224,9 @@ read -p "Are the DGXB200_25.06.3 firmware files downloaded and extracted? (y/n):
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     print_info "Please provide the absolute paths to the firmware files:"
-    read -p "Motherboard package path: " MOTHERBOARD_PACKAGE_PATH
-    read -p "GPU intermediate package path: " GPU_INTERMEDIATE_PACKAGE_PATH
-    read -p "GPU final package path: " GPU_FINAL_PACKAGE_PATH
+    prompt_with_default "Motherboard package path" "$MOTHERBOARD_PACKAGE_PATH" "MOTHERBOARD_PACKAGE_PATH"
+    prompt_with_default "GPU intermediate package path" "$GPU_INTERMEDIATE_PACKAGE_PATH" "GPU_INTERMEDIATE_PACKAGE_PATH"
+    prompt_with_default "GPU final package path" "$GPU_FINAL_PACKAGE_PATH" "GPU_FINAL_PACKAGE_PATH"
     
     # Validate paths exist
     for path in "$MOTHERBOARD_PACKAGE_PATH" "$GPU_INTERMEDIATE_PACKAGE_PATH" "$GPU_FINAL_PACKAGE_PATH"; do
@@ -192,9 +263,9 @@ else
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         print_info "Please enter the correct paths:"
-        read -p "Motherboard package path: " MOTHERBOARD_PACKAGE_PATH
-        read -p "GPU intermediate package path: " GPU_INTERMEDIATE_PACKAGE_PATH
-        read -p "GPU final package path: " GPU_FINAL_PACKAGE_PATH
+        prompt_with_default "Motherboard package path" "$MOTHERBOARD_PACKAGE_PATH" "MOTHERBOARD_PACKAGE_PATH"
+        prompt_with_default "GPU intermediate package path" "$GPU_INTERMEDIATE_PACKAGE_PATH" "GPU_INTERMEDIATE_PACKAGE_PATH"
+        prompt_with_default "GPU final package path" "$GPU_FINAL_PACKAGE_PATH" "GPU_FINAL_PACKAGE_PATH"
     fi
 fi
 
@@ -206,9 +277,27 @@ echo "  List: 192.168.1.10,192.168.1.11,192.168.1.15"
 echo "  Full range: 192.168.1.10-192.168.1.20"
 echo
 
+# Reconstruct current IP input if available
+if [[ -n "$IP_PREFIX" && -n "$START_IP" && -n "$END_IP" ]]; then
+    if [[ "$START_IP" == "$END_IP" ]]; then
+        current_ip_input="$IP_PREFIX.$START_IP"
+    else
+        current_ip_input="$IP_PREFIX.$START_IP-$IP_PREFIX.$END_IP"
+    fi
+else
+    current_ip_input=""
+fi
+
 # Get IP input with validation and re-prompting
 while true; do
-    read -p "Enter IP address range/list: " ip_input
+    if [[ -n "$current_ip_input" ]]; then
+        read -p "Enter IP address range/list [current: $current_ip_input] (press Enter to keep current): " ip_input
+        if [[ -z "$ip_input" ]]; then
+            ip_input="$current_ip_input"
+        fi
+    else
+        read -p "Enter IP address range/list: " ip_input
+    fi
     
     if validate_ip_range "$ip_input"; then
         print_success "Valid IP range format detected"
@@ -223,6 +312,7 @@ while true; do
         echo
         print_warning "Please enter a valid format. NO DEFAULTS WILL BE USED."
         echo
+        current_ip_input=""  # Clear invalid current value
     fi
 done
 
@@ -259,10 +349,21 @@ print_info "  Start IP: $START_IP"
 print_info "  End IP: $END_IP"
 
 # Get exclusions
-read -p "Do you want to exclude any IP addresses? (y/n): " -n 1 -r
+if [[ -n "$SKIP_IP" ]]; then
+    read -p "Do you want to exclude any IP addresses? [current exclusions: $SKIP_IP] (y/n): " -n 1 -r
+else
+    read -p "Do you want to exclude any IP addresses? (y/n): " -n 1 -r
+fi
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    read -p "Enter IP addresses to exclude (comma-separated): " exclude_ips
+    if [[ -n "$SKIP_IP" ]]; then
+        read -p "Enter IP addresses to exclude (comma-separated) [current: $SKIP_IP] (press Enter to keep current): " exclude_ips
+        if [[ -z "$exclude_ips" ]]; then
+            exclude_ips="$SKIP_IP"
+        fi
+    else
+        read -p "Enter IP addresses to exclude (comma-separated): " exclude_ips
+    fi
     SKIP_IP="$exclude_ips"
 else
     SKIP_IP=""
@@ -325,7 +426,29 @@ echo "  Range: b33-b64 (must match IP range count)"
 echo "  List: dgx-node-01,dgx-node-02,dgx-node-05"
 echo "  Prefix: dgx-cluster (generates dgx-cluster-01, dgx-cluster-02, etc.)"
 echo
-read -p "Enter hostname range/list or press Enter to use IP-based names: " hostname_input
+
+# Reconstruct current hostname input if available
+current_hostname_input=""
+if [[ "$HOSTNAME_TYPE" == "RANGE" && -n "$HOSTNAME_PREFIX" && -n "$HOSTNAME_START" && -n "$HOSTNAME_END" ]]; then
+    current_hostname_input="$HOSTNAME_PREFIX$HOSTNAME_START-$HOSTNAME_PREFIX$HOSTNAME_END"
+elif [[ "$HOSTNAME_TYPE" == "LIST" && -n "$HOSTNAME_LIST" ]]; then
+    current_hostname_input="$HOSTNAME_LIST"
+elif [[ "$HOSTNAME_TYPE" == "PREFIX" && -n "$SYSTEM_NAME_PREFIX" ]]; then
+    current_hostname_input="$SYSTEM_NAME_PREFIX"
+elif [[ "$HOSTNAME_TYPE" == "IP_BASED" ]]; then
+    current_hostname_input=""  # Will show as default
+fi
+
+if [[ -n "$current_hostname_input" ]]; then
+    read -p "Enter hostname range/list [current: $current_hostname_input] (press Enter to keep current): " hostname_input
+    if [[ -z "$hostname_input" ]]; then
+        hostname_input="$current_hostname_input"
+    fi
+elif [[ "$HOSTNAME_TYPE" == "IP_BASED" ]]; then
+    read -p "Enter hostname range/list [current: IP-based names] (press Enter to keep current): " hostname_input
+else
+    read -p "Enter hostname range/list or press Enter to use IP-based names: " hostname_input
+fi
 
 # Parse hostname configuration
 hostname_config=$(parse_hostname_range "$hostname_input" "$START_IP" "$END_IP")
@@ -356,9 +479,8 @@ fi
 
 # Get credentials
 print_info "Configuring BMC credentials..."
-read -p "BMC Username: " BMC_USERNAME
-read -s -p "BMC Password: " BMC_PASSWORD
-echo
+prompt_with_default "BMC Username" "$BMC_USERNAME" "BMC_USERNAME"
+prompt_password_with_default "BMC Password" "$BMC_PASSWORD" "BMC_PASSWORD"
 
 print_info "Confirming BMC credentials are the same for all systems..."
 read -p "Are the BMC username and password the same for ALL systems in your range? (y/n): " -n 1 -r
