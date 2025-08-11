@@ -268,19 +268,90 @@ else
     SKIP_IP=""
 fi
 
+# Function to parse hostname range
+parse_hostname_range() {
+    local input="$1"
+    local ip_start="$2"
+    local ip_end="$3"
+    
+    if [[ -z "$input" ]]; then
+        # Use IP-based names
+        echo "IP_BASED"
+        return
+    fi
+    
+    # Check for hostname range like b33-b64
+    if [[ $input =~ ^([a-zA-Z0-9-]+)([0-9]+)-([a-zA-Z0-9-]+)([0-9]+)$ ]]; then
+        local start_prefix="${BASH_REMATCH[1]}"
+        local start_num="${BASH_REMATCH[2]}"
+        local end_prefix="${BASH_REMATCH[3]}"
+        local end_num="${BASH_REMATCH[4]}"
+        
+        # Validate that prefixes match
+        if [[ "$start_prefix" != "$end_prefix" ]]; then
+            print_error "Hostname range prefixes must match: $start_prefix vs $end_prefix"
+            return 1
+        fi
+        
+        # Validate that hostname range matches IP range count
+        local hostname_count=$((end_num - start_num + 1))
+        local ip_count=$((ip_end - ip_start + 1))
+        
+        if [[ $hostname_count -ne $ip_count ]]; then
+            print_error "Hostname range count ($hostname_count) must match IP range count ($ip_count)"
+            print_error "Hostnames: $start_prefix$start_num to $end_prefix$end_num"
+            print_error "IPs: $ip_start to $ip_end"
+            return 1
+        fi
+        
+        echo "RANGE:$start_prefix:$start_num:$end_num"
+        return
+    fi
+    
+    # Check for comma-separated list
+    if [[ $input == *","* ]]; then
+        echo "LIST:$input"
+        return
+    fi
+    
+    # Treat as prefix
+    echo "PREFIX:$input"
+}
+
 # Get hostname configuration
 print_info "Configuring system hostnames..."
 echo "Format examples:"
-echo "  Range: dgx-01-dgx-10"
+echo "  Range: b33-b64 (must match IP range count)"
 echo "  List: dgx-node-01,dgx-node-02,dgx-node-05"
+echo "  Prefix: dgx-cluster (generates dgx-cluster-01, dgx-cluster-02, etc.)"
 echo
 read -p "Enter hostname range/list or press Enter to use IP-based names: " hostname_input
 
-if [[ -z "$hostname_input" ]]; then
+# Parse hostname configuration
+hostname_config=$(parse_hostname_range "$hostname_input" "$START_IP" "$END_IP")
+if [[ $? -ne 0 ]]; then
+    print_error "Invalid hostname configuration. Exiting."
+    exit 1
+fi
+
+if [[ "$hostname_config" == "IP_BASED" ]]; then
+    HOSTNAME_TYPE="IP_BASED"
     SYSTEM_NAME_PREFIX="dgx-system"
-    print_info "Will use IP-based system names like dgx-system-31, dgx-system-32, etc."
-else
-    SYSTEM_NAME_PREFIX="$hostname_input"
+    print_info "Will use IP-based system names like dgx-system-$START_IP, dgx-system-$END_IP, etc."
+elif [[ "$hostname_config" =~ ^RANGE:(.+):([0-9]+):([0-9]+)$ ]]; then
+    HOSTNAME_TYPE="RANGE"
+    HOSTNAME_PREFIX="${BASH_REMATCH[1]}"
+    HOSTNAME_START="${BASH_REMATCH[2]}"
+    HOSTNAME_END="${BASH_REMATCH[3]}"
+    print_info "Will use hostname range: $HOSTNAME_PREFIX$HOSTNAME_START to $HOSTNAME_PREFIX$HOSTNAME_END"
+elif [[ "$hostname_config" =~ ^LIST:(.+)$ ]]; then
+    HOSTNAME_TYPE="LIST"
+    HOSTNAME_LIST="${BASH_REMATCH[1]}"
+    print_info "Will use hostname list: $HOSTNAME_LIST"
+elif [[ "$hostname_config" =~ ^PREFIX:(.+)$ ]]; then
+    HOSTNAME_TYPE="PREFIX"
+    SYSTEM_NAME_PREFIX="${BASH_REMATCH[1]}"
+    print_info "Will use hostname prefix: $SYSTEM_NAME_PREFIX (generates $SYSTEM_NAME_PREFIX-01, $SYSTEM_NAME_PREFIX-02, etc.)"
 fi
 
 # Get credentials
@@ -317,7 +388,12 @@ END_IP="$END_IP"
 SKIP_IP="$SKIP_IP"
 
 # System Configuration
+HOSTNAME_TYPE="$HOSTNAME_TYPE"
 SYSTEM_NAME_PREFIX="$SYSTEM_NAME_PREFIX"
+HOSTNAME_PREFIX="$HOSTNAME_PREFIX"
+HOSTNAME_START="$HOSTNAME_START"
+HOSTNAME_END="$HOSTNAME_END"
+HOSTNAME_LIST="$HOSTNAME_LIST"
 
 # BMC Credentials
 BMC_USERNAME="$BMC_USERNAME"
@@ -337,13 +413,39 @@ generate_yaml_systems() {
     local package_path="$1"
     local targets="$2"
     local output=""
+    local counter=0
     
     for ((i=START_IP; i<=END_IP; i++)); do
         if [[ -n "$SKIP_IP" ]] && [[ "$SKIP_IP" == *"$IP_PREFIX.$i"* ]]; then
             continue
         fi
         
-        local system_name="${SYSTEM_NAME_PREFIX}-$(printf "%02d" $((i - START_IP + 1)))"
+        # Generate system name based on hostname type
+        local system_name
+        case "$HOSTNAME_TYPE" in
+            "IP_BASED")
+                system_name="$SYSTEM_NAME_PREFIX-$i"
+                ;;
+            "RANGE")
+                local hostname_num=$((HOSTNAME_START + counter))
+                system_name="$HOSTNAME_PREFIX$hostname_num"
+                ;;
+            "LIST")
+                # Get the hostname from the list by position
+                local hostname_array=(${HOSTNAME_LIST//,/ })
+                if [[ $counter -lt ${#hostname_array[@]} ]]; then
+                    system_name="${hostname_array[$counter]}"
+                else
+                    system_name="$HOSTNAME_PREFIX-$((counter + 1))"
+                fi
+                ;;
+            "PREFIX")
+                system_name="$SYSTEM_NAME_PREFIX-$(printf "%02d" $((counter + 1)))"
+                ;;
+            *)
+                system_name="dgx-system-$i"
+                ;;
+        esac
         
         output+="- BMC_IP: \"$IP_PREFIX.$i\"\n"
         output+="  RF_USERNAME: \"$BMC_USERNAME\"\n"
@@ -352,6 +454,8 @@ generate_yaml_systems() {
         output+="  PACKAGE: \"$package_path\"\n"
         output+="  UPDATE_PARAMETERS_TARGETS: $targets\n"
         output+="  SYSTEM_NAME: \"$system_name\"\n"
+        
+        ((counter++))
     done
     
     echo -e "$output"
