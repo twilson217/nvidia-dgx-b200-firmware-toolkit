@@ -1,0 +1,48 @@
+# NVIDIA DGX B200 Firmware Toolkit - Generated and Sensitive Files
+
+# Environment and configuration files
+.env
+*.env
+config.yaml
+setup_config.sh
+
+# Generated YAML configuration files (contain sensitive data)
+bmc.yaml
+motherboard.yaml
+gpu_tray_*.yaml
+
+# Log files and output
+*.log
+*.txt
+*_versions_*.txt
+*_parsed_versions.log
+
+# Temporary files
+temp_setup/
+*.tmp
+*.backup*
+setup_temp/
+
+# Firmware packages and downloads
+*.fwpkg
+*.tar.gz
+*.deb
+DGXB200_*/
+nvfwupd_*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# IDE files
+.vscode/
+.idea/
+
+# Downloaded firmware extraction directory
+firmware_extracted/
+
+# User-specific configuration backups
+*_user_backup*
