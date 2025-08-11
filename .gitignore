@@ -27,7 +27,6 @@ setup_temp/
 *.fwpkg
 *.tar.gz
 *.deb
-DGXB200_*/
 nvfwupd_*
 
 # OS and editor files
