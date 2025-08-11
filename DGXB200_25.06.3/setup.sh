@@ -382,7 +382,7 @@ parse_hostname_range() {
     fi
     
     # Check for hostname range like b33-b64
-    if [[ $input =~ ^([a-zA-Z0-9-]+)([0-9]+)-([a-zA-Z0-9-]+)([0-9]+)$ ]]; then
+    if [[ $input =~ ^([a-zA-Z0-9-]*[a-zA-Z-])([0-9]+)-([a-zA-Z0-9-]*[a-zA-Z-])([0-9]+)$ ]]; then
         local start_prefix="${BASH_REMATCH[1]}"
         local start_num="${BASH_REMATCH[2]}"
         local end_prefix="${BASH_REMATCH[3]}"
