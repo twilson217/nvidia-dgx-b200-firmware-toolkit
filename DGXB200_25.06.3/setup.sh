@@ -7,7 +7,6 @@ set -e  # Exit on any error
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
-TEMP_DIR="$SCRIPT_DIR/temp_setup"
 
 # Function to load existing configuration
 load_existing_config() {
@@ -83,25 +82,6 @@ print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-
-# Function to confirm command execution
-confirm_command() {
-    local cmd="$1"
-    echo -e "${YELLOW}About to run:${NC} $cmd"
-    read -p "Confirm? (y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_error "Command cancelled by user"
-        exit 1
-    fi
-}
-
-# Function to run command with confirmation
-run_with_confirmation() {
-    local cmd="$1"
-    confirm_command "$cmd"
-    eval "$cmd"
-}
 
 # Function to validate IP range format
 validate_ip_range() {
@@ -186,88 +166,35 @@ if command -v nvfwupd &> /dev/null; then
     NVFWUPD_PATH="nvfwupd"
 else
     print_warning "nvfwupd not found in PATH"
-    read -p "Is nvfwupd installed on this system? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        read -p "Please enter the full path to nvfwupd: " nvfwupd_path
-        if [[ -x "$nvfwupd_path" ]]; then
-            print_info "Adding nvfwupd to PATH for this session"
-            export PATH="$(dirname "$nvfwupd_path"):$PATH"
-            NVFWUPD_PATH="$nvfwupd_path"
-        else
-            print_error "nvfwupd not found at specified path or not executable"
-            exit 1
-        fi
+    read -p "Please enter the full path to nvfwupd: " nvfwupd_path
+    if [[ -x "$nvfwupd_path" ]]; then
+        print_info "Adding nvfwupd to PATH for this session"
+        export PATH="$(dirname "$nvfwupd_path"):$PATH"
+        NVFWUPD_PATH="$nvfwupd_path"
     else
-        print_info "Downloading and installing nvfwupd..."
-        mkdir -p "$TEMP_DIR"
-        cd "$TEMP_DIR"
-        
-        download_url="https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/nvfwupd_2.0.7-1_amd64.deb"
-        run_with_confirmation "wget '$download_url'"
-        run_with_confirmation "sudo dpkg -i nvfwupd_2.0.7-1_amd64.deb"
-        
-        if command -v nvfwupd &> /dev/null; then
-            print_success "nvfwupd installed successfully"
-            NVFWUPD_PATH="nvfwupd"
-        else
-            print_error "nvfwupd installation failed"
-            exit 1
-        fi
-        cd "$SCRIPT_DIR"
+        print_error "nvfwupd not found at specified path or not executable"
+        print_error "Please install nvfwupd manually and run setup again"
+        exit 1
     fi
 fi
 
 # Check firmware files
-print_info "Checking DGXB200_25.06.3 firmware files..."
-read -p "Are the DGXB200_25.06.3 firmware files downloaded and extracted? (y/n): " -n 1 -r
+print_info "Configuring DGXB200_25.06.3 firmware file paths..."
+print_info "Please provide the absolute paths to the firmware files:"
+print_warning "You must manually download and extract the DGXB200_25.06.3 firmware package first."
 echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    print_info "Please provide the absolute paths to the firmware files:"
-    prompt_with_default "Motherboard package path" "$MOTHERBOARD_PACKAGE_PATH" "MOTHERBOARD_PACKAGE_PATH"
-    prompt_with_default "GPU intermediate package path" "$GPU_INTERMEDIATE_PACKAGE_PATH" "GPU_INTERMEDIATE_PACKAGE_PATH"
-    prompt_with_default "GPU final package path" "$GPU_FINAL_PACKAGE_PATH" "GPU_FINAL_PACKAGE_PATH"
-    
-    # Validate paths exist
-    for path in "$MOTHERBOARD_PACKAGE_PATH" "$GPU_INTERMEDIATE_PACKAGE_PATH" "$GPU_FINAL_PACKAGE_PATH"; do
-        if [[ ! -f "$path" ]]; then
-            print_error "File not found: $path"
-            exit 1
-        fi
-    done
-else
-    print_info "Downloading DGXB200_25.06.3 firmware package..."
-    mkdir -p "$TEMP_DIR"
-    cd "$SCRIPT_DIR"
-    
-    firmware_url="https://dgxdownloads.nvidia.com/custhelp/DGX_B200/firmware/DGXB200_25.06.3.tar.gz"
-    run_with_confirmation "wget '$firmware_url'"
-    
-    print_info "Extracting firmware package..."
-    run_with_confirmation "tar -xzf DGXB200_25.06.3.tar.gz"
-    
-    # Auto-detect paths from extraction
-    print_info "Auto-detecting firmware file paths..."
-    MOTHERBOARD_PACKAGE_PATH="$(find "$SCRIPT_DIR" -name "*nvfw_DGX_*.fwpkg" -path "*/motherboard_tray/*" | head -1)"
-    GPU_INTERMEDIATE_PACKAGE_PATH="$(find "$SCRIPT_DIR" -name "*nvfw_DGX-HGX-B100-B200x8_*250114*.fwpkg" | head -1)"
-    GPU_FINAL_PACKAGE_PATH="$(find "$SCRIPT_DIR" -name "*nvfw_DGX-HGX-B100-B200x8_*250428*.fwpkg" | head -1)"
-    
-    echo
-    print_info "Detected firmware file paths:"
-    echo "  Motherboard: $MOTHERBOARD_PACKAGE_PATH"
-    echo "  GPU Intermediate: $GPU_INTERMEDIATE_PACKAGE_PATH"
-    echo "  GPU Final: $GPU_FINAL_PACKAGE_PATH"
-    echo
-    
-    read -p "Are these paths correct? (y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_info "Please enter the correct paths:"
-        prompt_with_default "Motherboard package path" "$MOTHERBOARD_PACKAGE_PATH" "MOTHERBOARD_PACKAGE_PATH"
-        prompt_with_default "GPU intermediate package path" "$GPU_INTERMEDIATE_PACKAGE_PATH" "GPU_INTERMEDIATE_PACKAGE_PATH"
-        prompt_with_default "GPU final package path" "$GPU_FINAL_PACKAGE_PATH" "GPU_FINAL_PACKAGE_PATH"
+prompt_with_default "Motherboard package path" "$MOTHERBOARD_PACKAGE_PATH" "MOTHERBOARD_PACKAGE_PATH"
+prompt_with_default "GPU intermediate package path" "$GPU_INTERMEDIATE_PACKAGE_PATH" "GPU_INTERMEDIATE_PACKAGE_PATH"
+prompt_with_default "GPU final package path" "$GPU_FINAL_PACKAGE_PATH" "GPU_FINAL_PACKAGE_PATH"
+
+# Validate paths exist
+for path in "$MOTHERBOARD_PACKAGE_PATH" "$GPU_INTERMEDIATE_PACKAGE_PATH" "$GPU_FINAL_PACKAGE_PATH"; do
+    if [[ ! -f "$path" ]]; then
+        print_error "File not found: $path"
+        print_error "Please download and extract the DGXB200_25.06.3 firmware package manually."
+        exit 1
     fi
-fi
+done
 
 # Get IP address configuration
 print_info "Configuring IP address ranges..."
@@ -322,24 +249,29 @@ if [[ $ip_input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})-([0-9]+)$
     IP_PREFIX="${BASH_REMATCH[1]}"
     START_IP="${BASH_REMATCH[2]}"
     END_IP="${BASH_REMATCH[3]}"
+    IP_TYPE="RANGE"
 elif [[ $ip_input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})-([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})$ ]]; then
     # Full range like 192.168.1.63-192.168.1.94
     IP_PREFIX="${BASH_REMATCH[1]}"
     START_IP="${BASH_REMATCH[2]}"
     END_IP="${BASH_REMATCH[4]}"
+    IP_TYPE="RANGE"
 elif [[ $ip_input =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})$ ]]; then
     # Single IP like 192.168.1.10
     IP_PREFIX="${BASH_REMATCH[1]}"
     START_IP="${BASH_REMATCH[2]}"
     END_IP="${BASH_REMATCH[2]}"
+    IP_TYPE="SINGLE"
 else
-    # Comma-separated list - we'll use the first IP for prefix and handle specially
+    # Comma-separated list - store the full list
+    IP_LIST="$ip_input"
+    IP_TYPE="LIST"
     first_ip=$(echo "$ip_input" | cut -d',' -f1)
     if [[ $first_ip =~ ^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.([0-9]{1,3})$ ]]; then
         IP_PREFIX="${BASH_REMATCH[1]}"
         START_IP="${BASH_REMATCH[2]}"
         END_IP="${BASH_REMATCH[2]}"
-        print_info "Using comma-separated list - scripts will use first IP for range variables"
+        print_info "Using comma-separated list with $(echo "$ip_input" | tr ',' '\n' | wc -l) IP addresses"
     fi
 fi
 
@@ -450,8 +382,16 @@ else
     read -p "Enter hostname range/list or press Enter to use IP-based names: " hostname_input
 fi
 
-# Parse hostname configuration
-hostname_config=$(parse_hostname_range "$hostname_input" "$START_IP" "$END_IP")
+# Calculate actual IP count for hostname validation
+if [[ "$IP_TYPE" == "LIST" ]]; then
+    ip_count=$(echo "$IP_LIST" | tr ',' '\n' | wc -l)
+    # Use fake start/end for compatibility with parse_hostname_range
+    hostname_config=$(parse_hostname_range "$hostname_input" "1" "$ip_count")
+else
+    ip_count=$((END_IP - START_IP + 1))
+    hostname_config=$(parse_hostname_range "$hostname_input" "$START_IP" "$END_IP")
+fi
+
 if [[ $? -ne 0 ]]; then
     print_error "Invalid hostname configuration. Exiting."
     exit 1
@@ -460,7 +400,16 @@ fi
 if [[ "$hostname_config" == "IP_BASED" ]]; then
     HOSTNAME_TYPE="IP_BASED"
     SYSTEM_NAME_PREFIX="dgx-system"
-    print_info "Will use IP-based system names like dgx-system-$START_IP, dgx-system-$END_IP, etc."
+    if [[ "$IP_TYPE" == "LIST" ]]; then
+        # Show example with actual IP addresses from the list
+        first_ip=$(echo "$IP_LIST" | cut -d',' -f1)
+        last_ip=$(echo "$IP_LIST" | tr ',' '\n' | tail -1)
+        first_octet="${first_ip##*.}"
+        last_octet="${last_ip##*.}"
+        print_info "Will use IP-based system names like dgx-system-$first_octet, dgx-system-$last_octet, etc."
+    else
+        print_info "Will use IP-based system names like dgx-system-$START_IP, dgx-system-$END_IP, etc."
+    fi
 elif [[ "$hostname_config" =~ ^RANGE:(.+):([0-9]+):([0-9]+)$ ]]; then
     HOSTNAME_TYPE="RANGE"
     HOSTNAME_PREFIX="${BASH_REMATCH[1]}"
@@ -507,6 +456,8 @@ GPU_FINAL_PACKAGE_PATH="$GPU_FINAL_PACKAGE_PATH"
 IP_PREFIX="$IP_PREFIX"
 START_IP="$START_IP"
 END_IP="$END_IP"
+IP_TYPE="$IP_TYPE"
+IP_LIST="$IP_LIST"
 SKIP_IP="$SKIP_IP"
 
 # System Configuration
@@ -537,16 +488,42 @@ generate_yaml_systems() {
     local output=""
     local counter=0
     
-    for ((i=START_IP; i<=END_IP; i++)); do
-        if [[ -n "$SKIP_IP" ]] && [[ "$SKIP_IP" == *"$IP_PREFIX.$i"* ]]; then
-            continue
-        fi
+    # Generate list of IPs based on IP_TYPE
+    local ip_array=()
+    case "$IP_TYPE" in
+        "RANGE"|"SINGLE")
+            for ((i=START_IP; i<=END_IP; i++)); do
+                local current_ip="$IP_PREFIX.$i"
+                if [[ -n "$SKIP_IP" ]] && [[ "$SKIP_IP" == *"$current_ip"* ]]; then
+                    continue
+                fi
+                ip_array+=("$current_ip")
+            done
+            ;;
+        "LIST")
+            # Split comma-separated list into array
+            IFS=',' read -ra temp_array <<< "$IP_LIST"
+            for ip in "${temp_array[@]}"; do
+                # Trim whitespace
+                ip=$(echo "$ip" | xargs)
+                if [[ -n "$SKIP_IP" ]] && [[ "$SKIP_IP" == *"$ip"* ]]; then
+                    continue
+                fi
+                ip_array+=("$ip")
+            done
+            ;;
+    esac
+    
+    # Generate YAML entries for each IP
+    for ip in "${ip_array[@]}"; do
+        # Extract last octet for IP-based naming
+        local last_octet="${ip##*.}"
         
         # Generate system name based on hostname type
         local system_name
         case "$HOSTNAME_TYPE" in
             "IP_BASED")
-                system_name="$SYSTEM_NAME_PREFIX-$i"
+                system_name="$SYSTEM_NAME_PREFIX-$last_octet"
                 ;;
             "RANGE")
                 local hostname_num=$((HOSTNAME_START + counter))
@@ -565,11 +542,11 @@ generate_yaml_systems() {
                 system_name="$SYSTEM_NAME_PREFIX-$(printf "%02d" $((counter + 1)))"
                 ;;
             *)
-                system_name="dgx-system-$i"
+                system_name="dgx-system-$last_octet"
                 ;;
         esac
         
-        output+="- BMC_IP: \"$IP_PREFIX.$i\"\n"
+        output+="- BMC_IP: \"$ip\"\n"
         output+="  RF_USERNAME: \"$BMC_USERNAME\"\n"
         output+="  RF_PASSWORD: \"$BMC_PASSWORD\"\n"
         output+="  TARGET_PLATFORM: \"$TARGET_PLATFORM\"\n"
@@ -673,9 +650,6 @@ for script in *.sh; do
         chmod +x "$script"
     fi
 done
-
-# Clean up
-rm -rf "$TEMP_DIR"
 
 print_success "Setup completed successfully!"
 echo
