@@ -639,13 +639,8 @@ for script in *.sh; do
             tail -n +2 "$script"
         ) > "$script.tmp" && mv "$script.tmp" "$script"
         
-        # Replace placeholders with variables
-        sed -i 's/<BMC_USERNAME>/$BMC_USERNAME/g' "$script"
-        sed -i 's/<BMC_PASSWORD>/$BMC_PASSWORD/g' "$script"
-        sed -i 's/<IP_PREFIX>/$IP_PREFIX/g' "$script"
-        sed -i 's/<START_IP>/$START_IP/g' "$script"
-        sed -i 's/<END_IP>/$END_IP/g' "$script"
-        sed -i 's/<SKIP_IP>/$SKIP_IP/g' "$script"
+        # Note: IP addresses are now read from YAML files by the scripts
+        # No placeholder replacement needed for IP addresses
         
         chmod +x "$script"
     fi
