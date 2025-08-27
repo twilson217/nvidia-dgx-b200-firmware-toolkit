@@ -14,6 +14,7 @@ The scripts follow the official [NVIDIA DGX B200 Firmware Update Steps](https://
 - **nvfwupd tool** version 2.0.7 or later
   - Download from: [NVIDIA Enterprise Support Portal](https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/nvfwupd_2.0.7-1_amd64.deb)
   - Installation: `sudo dpkg -i nvfwupd_2.0.7-1_amd64.deb`
+  - **Note**: You must manually download and install nvfwupd before running setup.sh
 - **System tools**: `curl`, `ipmitool`, `jq`, `awk`, `watch`
 - **Bash shell** (tested on Ubuntu 24.04)
 - **Cluster management tools**: `cmsh` (for monitoring system status)
@@ -28,7 +29,19 @@ The scripts follow the official [NVIDIA DGX B200 Firmware Update Steps](https://
   - Download from: [DGXB200_25.06.3.tar.gz](https://dgxdownloads.nvidia.com/custhelp/DGX_B200/firmware/DGXB200_25.06.3.tar.gz)
   - Extract in the same directory as the scripts: `tar -xzf DGXB200_25.06.3.tar.gz`
   - Contains separate packages for motherboard tray and GPU tray components
-  - YAML configuration files reference extracted package paths
+  - **Note**: You must manually download and extract firmware packages before running setup.sh
+  - The setup script will prompt for the absolute paths to the extracted firmware files
+
+## Initial Setup Requirements
+
+**Before running the setup script, ensure you have:**
+
+1. **Manually installed nvfwupd** version 2.0.7 or later
+2. **Downloaded and extracted** the DGXB200_25.06.3 firmware package
+3. **Network access** to all target DGX B200 BMC interfaces
+4. **BMC credentials** (username/password) for all systems
+
+The setup script **does not** automatically download or install software/firmware. It only configures the toolkit to use your existing installations and downloads.
 
 ## Firmware Update Workflow
 
@@ -46,11 +59,10 @@ Follow this production-tested sequence for complete system updates, based on the
    ```
    
    The setup script will:
-   - Install/configure nvfwupd if needed
-   - Download and extract firmware packages automatically
-   - Prompt for your IP ranges, hostnames, and BMC credentials
+   - Verify nvfwupd installation and configure paths
+   - Prompt for firmware package paths, IP ranges, hostnames, and BMC credentials
    - Generate properly configured YAML files for your systems
-   - Update all scripts to use your actual values
+   - Configure all scripts to use your environment settings
 
 2. **Initial connectivity check** and BMC reset:
    ```bash
