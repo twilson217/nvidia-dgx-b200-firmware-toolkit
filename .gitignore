@@ -45,3 +45,6 @@ firmware_extracted/
 
 # User-specific configuration backups
 *_user_backup*
+
+# Non-working scripts
+parse_versions.sh

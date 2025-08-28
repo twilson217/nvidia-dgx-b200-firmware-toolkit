@@ -185,7 +185,7 @@ DGXB200_25.06.3/                        # Firmware toolkit for NVIDIA DGX B200 v
 │   ├── gpu_backgroundcopystatus.sh      # GPU background copy status checker
 │   ├── mc_info.sh                       # BMC firmware version info
 │   ├── mc_reset.sh                      # BMC cold reset utility
-│   ├── parse_versions.sh                # Parse version logs for issues/updates needed
+
 │   ├── power_cycle.sh                   # System power cycle utility
 │   ├── setup.sh                         # Automated toolkit configuration script
 │   ├── status_bios_background.sh        # BIOS update progress monitoring
@@ -218,37 +218,6 @@ DGXB200_25.06.3/                        # Firmware toolkit for NVIDIA DGX B200 v
 
 
 
-## Version Log Analysis
-
-The `parse_versions.sh` script helps analyze the verbose output from `nvfwupd show_version` commands, which can be overwhelming due to:
-- Redundant information across multiple systems
-- "N/A" entries for devices not covered by the current package
-- Connection failures mixed with successful results
-
-### Usage
-```bash
-# Parse any version log file
-./parse_versions.sh <version_log_file> [output_file]
-
-# Examples
-./parse_versions.sh pre_update_versions_motherboard.txt
-./parse_versions.sh post_update_versions_gpu_tray.txt custom_results.log
-```
-
-### What It Extracts
-The parser creates a clean summary containing only:
-1. **Connection Failures**: Systems that failed to retrieve firmware inventory from BMC
-2. **Update Requirements**: Firmware devices where:
-   - `Pkg Version` is NOT "N/A" (device covered by current package)
-   - `Up-To-Date` is "No" (device needs updating)
-
-### Output Format
-- **Timestamp-based filename**: `YYYY.MM.DD.HH.MM_parsed_versions.log`
-- **Structured sections**: Connection failures, systems needing updates, summary
-- **Clean device tables**: Only relevant devices with actionable information
-- **Statistics**: Total failures, systems needing updates, device counts
-
-This eliminates the need to manually sift through hundreds of lines of redundant version information across multiple systems and packages.
 
 ## Monitoring and Troubleshooting
 
